@@ -1,2 +1,5 @@
 /unsloth_compiled_cache
 /.ipynb_checkpoints
+/venv
+/.idea
+.env

@@ -1,0 +1,478 @@
+# 📚 Полный контекст базы данных Redmine (для генерации SQL)
+
+## 🧩 Общая информация
+
+- **Система:** Redmine + плагины (Agile, Easy Redmine, Checklists, ETL и др.)
+- **СУБД:** MySQL 5.7 / 8.0
+- **Кодировка:** `utf8_general_ci`, `utf8mb4_general_ci`
+- **Назначение:** Учёт задач техподдержки, разработки, инцидентов, доработок, релизов
+- **Язык интерфейса:** Русский
+- **Источник данных:** Реальная рабочая база компании
+
+> ✅ Этот документ содержит:
+> - Описание структуры таблиц
+> - Комментарии к полям
+> - Связи между таблицами
+> - Значения справочников (trackers, статусы, пользовательские поля и др.)
+
+---
+
+## 🔑 Основные таблицы
+
+---
+
+### 1. `projects` — Проекты
+```sql
+CREATE TABLE `projects` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL DEFAULT '',
+  `description` text DEFAULT NULL,
+  `homepage` varchar(255) DEFAULT '',
+  `is_public` tinyint(1) NOT NULL DEFAULT 1, -- Доступен ли проект всем
+  `parent_id` int(11) DEFAULT NULL,          -- Ссылка на родительский проект
+  `created_on` datetime DEFAULT NULL,        -- Дата создания
+  `updated_on` datetime DEFAULT NULL,        -- Дата обновления
+  `identifier` varchar(255) DEFAULT NULL,    -- Уникальный код (для URL)
+  `status` int(11) NOT NULL DEFAULT 1,       -- 1=активен, 9=архивирован
+  `lft` int(11) DEFAULT NULL,                -- Левый узел дерева (nested set)
+  `rgt` int(11) DEFAULT NULL,                -- Правый узел дерева
+  `inherit_members` tinyint(1) NOT NULL DEFAULT 0, -- Наследует участников
+  `default_version_id` int(11) DEFAULT NULL, -- Версия по умолчанию
+  `default_assigned_to_id` int(11) DEFAULT NULL, -- Исполнитель по умолчанию
+  PRIMARY KEY (`id`),
+  KEY `index_projects_on_lft` (`lft`),
+  KEY `index_projects_on_rgt` (`rgt`)
+);
+```
+
+> **Используется для:** группировки задач по проектам (например, "Техподдержка", "Разработка ЕГАИС")
+
+---
+
+### 2. `issues` — Задачи (тикеты)
+```sql
+CREATE TABLE `issues` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `tracker_id` int(11) NOT NULL,             -- Тип задачи (см. trackers)
+  `project_id` int(11) NOT NULL,             -- Проект (projects.id)
+  `subject` varchar(255) NOT NULL DEFAULT '',-- Краткое название
+  `description` longtext DEFAULT NULL,       -- Полное описание
+  `due_date` date DEFAULT NULL,              -- Плановая дата завершения
+  `category_id` int(11) DEFAULT NULL,        -- Категория (устаревшее)
+  `status_id` int(11) NOT NULL,              -- Текущий статус (issue_statuses.id)
+  `assigned_to_id` int(11) DEFAULT NULL,     -- Назначен пользователю (users.id)
+  `priority_id` int(11) NOT NULL,            -- Приоритет (enumerations.id, type='IssuePriority')
+  `fixed_version_id` int(11) DEFAULT NULL,   -- Версия, в которой будет решена (versions.id)
+  `author_id` int(11) NOT NULL,              -- Автор задачи (users.id)
+  `created_on` datetime DEFAULT NULL,        -- Дата создания
+  `updated_on` datetime DEFAULT NULL,        -- Дата последнего изменения
+  `start_date` date DEFAULT NULL,            -- Плановая дата начала
+  `done_ratio` int(11) NOT NULL DEFAULT 0,   -- Процент выполнения (0–100)
+  `estimated_hours` float DEFAULT NULL,      -- Оценка трудозатрат (в часах)
+  `parent_id` int(11) DEFAULT NULL,          -- Родительская задача (для иерархии)
+  `root_id` int(11) DEFAULT NULL,            -- Корень дерева задач
+  `lft` int(11) DEFAULT NULL,                -- Левый узел (nested set)
+  `rgt` int(11) DEFAULT NULL,                -- Правый узел
+  `is_private` tinyint(1) NOT NULL DEFAULT 0,-- Приватная задача?
+  `closed_on` datetime DEFAULT NULL,         -- Дата фактического закрытия
+  PRIMARY KEY (`id`),
+  KEY `issues_project_id` (`project_id`),
+  KEY `index_issues_on_status_id` (`status_id`),
+  KEY `index_issues_on_assigned_to_id` (`assigned_to_id`)
+);
+```
+
+> **Ключевое:** основная таблица всех задач.  
+> `closed_on` заполняется при закрытии, но не всегда. Лучше использовать `status_id → is_closed=1`.
+
+---
+
+### 3. `trackers` — Типы задач
+```sql
+CREATE TABLE `trackers` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(30) NOT NULL DEFAULT '',
+  `description` varchar(255) DEFAULT NULL,
+  `position` int(11) DEFAULT NULL,
+  `is_in_roadmap` tinyint(1) NOT NULL DEFAULT 1,
+  `fields_bits` int(11) DEFAULT 0,
+  `default_status_id` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+);
+```
+
+> **Справочник значений (из вашей базы):**
+```
+tracker_id,tracker_name
+1,"Ошибка"
+2,"Улучшение"
+3,"Поддержка"
+4,"Требование"
+5,"Спринт"
+7,"Backlogs"
+8,"Techlogs"
+9,"Веха"
+```
+
+> **Используется для:** фильтрации по типу задачи.  
+> Например: `tracker_id=3` — это задачи техподдержки.
+
+---
+
+### 4. `issue_statuses` — Статусы задач
+```sql
+CREATE TABLE `issue_statuses` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(30) NOT NULL DEFAULT '',
+  `is_closed` tinyint(1) NOT NULL DEFAULT 0,   -- 1 = закрытый статус
+  `position` int(11) DEFAULT NULL,
+  `default_done_ratio` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `index_issue_statuses_on_is_closed` (`is_closed`)
+);
+```
+
+> **Справочник значений (из вашей базы):**
+```
+status_id,status_name,is_status_closed
+1,"Новый",0
+2,"В разработке",0
+3,"Выполнено",0
+8,"В тестировании",0
+9,"Открыт повторно",0
+4,"Обратная связь",0
+5,"Закрыт",1
+6,"Отказ",1
+10,"Формирование ФТ",0
+11,"Согласование ФТ",0
+12,"Отложено",0
+13,"Формирование ТТ",0
+14,"merge request",0
+15,"Ожидает релиз",0
+```
+
+> **Важно:** `is_closed=1` означает, что задача считается закрытой.
+
+---
+
+### 5. `enumerations` — Справочники (приоритеты, активности)
+```sql
+CREATE TABLE `enumerations` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(30) NOT NULL DEFAULT '',
+  `position` int(11) DEFAULT NULL,
+  `is_default` tinyint(1) NOT NULL DEFAULT 0,
+  `type` varchar(255) DEFAULT NULL,           -- 'IssuePriority', 'TimeEntryActivity'
+  `active` tinyint(1) NOT NULL DEFAULT 1,
+  `project_id` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+);
+```
+
+> **Приоритеты задач (type = 'IssuePriority'):**
+```
+id,name
+6,"Низкий"
+7,"Обычный"
+8,"Высокий"
+9,"Срочный"
+10,"Немедленно"
+```
+
+> **Типы активности (type = 'TimeEntryActivity'):**
+```
+id,name
+9,"Разработка"
+10,"Тестирование"
+11,"Аналитика"
+12,"Совещание"
+13,"Документирование"
+14,"Поддержка"
+15,"Внеплановые работы"
+16,"Администрирование"
+17,"Обучение"
+18,"Планирование"
+19,"Контроль качества"
+20,"Интеграция"
+```
+
+---
+
+### 6. `users` — Пользователи
+```sql
+CREATE TABLE `users` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `login` varchar(255) NOT NULL DEFAULT '',
+  `hashed_password` varchar(40) NOT NULL DEFAULT '',
+  `firstname` varchar(30) NOT NULL DEFAULT '',
+  `lastname` varchar(255) NOT NULL DEFAULT '',
+  `admin` tinyint(1) NOT NULL DEFAULT 0,       -- 1 = администратор
+  `status` int(11) NOT NULL DEFAULT 1,         -- 1=активен, 3=заблокирован
+  `last_login_on` datetime DEFAULT NULL,       -- Последний вход
+  `language` varchar(5) DEFAULT '',
+  `auth_source_id` int(11) DEFAULT NULL,
+  `created_on` datetime DEFAULT NULL,
+  `updated_on` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `index_users_on_type` (`type`)
+);
+```
+
+> **Связи:** используется в `issues.author_id`, `issues.assigned_to_id`, `time_entries.user_id`
+
+---
+
+### 7. `time_entries` — Учёт времени
+```sql
+CREATE TABLE `time_entries` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `project_id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `issue_id` int(11) DEFAULT NULL,             -- Связь с задачей
+  `hours` float NOT NULL,                      -- Затраченные часы
+  `comments` varchar(1024) DEFAULT NULL,       -- Комментарий
+  `activity_id` int(11) NOT NULL,              -- Тип активности (enumerations.id)
+  `spent_on` date NOT NULL,                    -- Дата затраты
+  `created_on` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `time_entries_issue_id` (`issue_id`),
+  KEY `index_time_entries_on_user_id` (`user_id`)
+);
+```
+
+> **Важно:** `hours` — тип `float`.  
+> Используется для анализа загрузки, эффективности, отклонений от оценки.
+
+---
+
+### 8. `journals` и `journal_details` — История изменений
+```sql
+CREATE TABLE `journals` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `journalized_id` int(11) NOT NULL,           -- ID задачи (issues.id)
+  `journalized_type` varchar(30) NOT NULL,     -- 'Issue'
+  `user_id` int(11) NOT NULL,                  -- Кто изменил
+  `notes` longtext DEFAULT NULL,               -- Комментарий к изменению
+  `created_on` datetime NOT NULL,              -- Дата изменения
+  `private_notes` tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `journals_journalized_id` (`journalized_id`,`journalized_type`),
+  KEY `index_journals_on_user_id` (`user_id`),
+  KEY `index_journals_on_created_on` (`created_on`)
+);
+
+CREATE TABLE `journal_details` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `journal_id` int(11) NOT NULL,
+  `property` varchar(30) NOT NULL,             -- 'attr', 'attachment'
+  `prop_key` varchar(30) NOT NULL,             -- 'status_id', 'assigned_to_id'
+  `old_value` longtext DEFAULT NULL,           -- Старое значение
+  `value` longtext DEFAULT NULL,               -- Новое значение
+  PRIMARY KEY (`id`),
+  KEY `journal_details_journal_id` (`journal_id`)
+);
+```
+
+> **Ключевое для аналитики:** позволяет отслеживать:
+> - Когда задача перешла в "В разработке"
+> - Кто и когда её закрыл
+> - Время в каждом статусе
+
+---
+
+### 9. `custom_fields` и `custom_values` — Пользовательские поля
+```sql
+CREATE TABLE `custom_fields` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `type` varchar(30) NOT NULL DEFAULT '',
+  `name` varchar(30) NOT NULL,
+  `field_format` varchar(30) NOT NULL,
+  `possible_values` text DEFAULT NULL,         -- YAML-массив для списков
+  `regexp` varchar(255) DEFAULT NULL,
+  `min_length` int(11) DEFAULT NULL,
+  `max_length` int(11) DEFAULT NULL,
+  `is_required` tinyint(1) NOT NULL DEFAULT 0,
+  `is_filter` tinyint(1) NOT NULL DEFAULT 0,
+  `searchable` tinyint(1) DEFAULT 0,
+  `default_value` text DEFAULT NULL,
+  `editable` tinyint(1) NOT NULL DEFAULT 1,
+  `visible` tinyint(1) NOT NULL DEFAULT 1,
+  `multiple` tinyint(1) NOT NULL DEFAULT 0,
+  `description` text DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `index_custom_fields_on_id_and_type` (`id`,`type`)
+);
+
+CREATE TABLE `custom_values` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `customized_type` varchar(30) NOT NULL,
+  `customized_id` int(11) NOT NULL,
+  `custom_field_id` int(11) NOT NULL,
+  `value` longtext DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `custom_values_customized` (`customized_type`,`customized_id`)
+);
+```
+
+> **Справочник пользовательских полей (из вашей базы):**
+```
+custom_field_id,custom_field_name,field_format
+1,"Исходящий номер",string
+2,"Организация",list
+3,"Тема",list
+4,"Тип обращения (ГК)",list
+5,"fsrarid",string
+6,"NLU_ID",string
+7,"Оценка NLU",enumeration
+8,"Телефон",string
+9,"E-mail",string
+10,"Поддержка",bool
+11,"Заказчик",list
+12,"Группа разработки",list
+...
+23,"Тип обращения (ГК)",list
+32,"Тип обращения",list
+142,"Направление",list
+143,"Перечень работ",list
+147,"Необходимость доработки ПО",enumeration
+```
+
+> **Пример использования:**
+> - `custom_field_id=11`, `value='Кружалин А.Ю.'` — заказчик задачи
+> - `custom_field_id=12`, `value='Back-end'` — группа разработки
+
+---
+
+### 10. `versions` — Версии (релизы)
+```sql
+CREATE TABLE `versions` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `project_id` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `effective_date` date DEFAULT NULL,
+  `status` varchar(255) DEFAULT 'open',
+  `sharing` varchar(255) NOT NULL DEFAULT 'none',
+  PRIMARY KEY (`id`),
+  KEY `versions_project_id` (`project_id`)
+);
+```
+
+> **Пример значений (из вашей базы):**
+```
+version_id,project_id,version_name,effective_date,version_status
+1,192,"3.2.93",,closed
+2,192,"3.3.1.3",,closed
+...
+23,192,"3.3.2",,closed
+...
+41,192,"3.3.3.1",,closed
+```
+
+> **Используется для:** анализа выполнения задач по релизам.
+
+---
+
+### 11. `tags` и `taggings` — Теги
+```sql
+CREATE TABLE `tags` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `taggings_count` int(11) DEFAULT 0,
+  PRIMARY KEY (`id`)
+);
+
+CREATE TABLE `taggings` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `tag_id` int(11) DEFAULT NULL,
+  `taggable_id` int(11) DEFAULT NULL,
+  `taggable_type` varchar(255) DEFAULT NULL,
+  `created_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `index_taggings_on_tag_id` (`tag_id`)
+);
+```
+
+> **Пример тегов:** `инцидент`, `срочное`, `ЕГАИС`, `ГИС МТ`
+
+---
+
+### 12. `attachments` — Вложения
+```sql
+CREATE TABLE `attachments` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `container_id` int(11) DEFAULT NULL,         -- ID задачи или вики
+  `container_type` varchar(30) DEFAULT NULL,   -- 'Issue', 'WikiPage'
+  `filename` varchar(255) NOT NULL,
+  `filesize` int(11) DEFAULT 0,
+  `content_type` varchar(255) DEFAULT '',
+  `digest` varchar(40) NOT NULL,
+  `downloads` int(11) NOT NULL DEFAULT 0,
+  `author_id` int(11) NOT NULL,
+  `created_on` datetime NOT NULL,
+  `description` text DEFAULT NULL,
+  `disk_filename` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `index_attachments_on_container_id_and_container_type` (`container_id`,`container_type`)
+);
+```
+
+> **Используется для:** анализа количества вложений по задачам.
+
+---
+
+## 🔗 Ключевые связи между таблицами
+
+| Из таблицы → В таблицу | По полям | Назначение |
+|------------------------|----------|-----------|
+| `issues.project_id` → `projects.id` | Проект задачи |
+| `issues.status_id` → `issue_statuses.id` | Статус задачи |
+| `issues.tracker_id` → `trackers.id` | Тип задачи |
+| `issues.assigned_to_id` → `users.id` | Исполнитель |
+| `issues.author_id` → `users.id` | Автор |
+| `issues.fixed_version_id` → `versions.id` | Плановый релиз |
+| `time_entries.issue_id` → `issues.id` | Затраты на задачу |
+| `time_entries.activity_id` → `enumerations.id` | Тип активности (где `type='TimeEntryActivity'`) |
+| `journals.journalized_id` → `issues.id` | История изменений |
+| `custom_values.customized_id` → `issues.id` | Пользовательские поля задачи |
+| `custom_values.custom_field_id` → `custom_fields.id` | Описание поля |
+| `taggings.taggable_id` → `issues.id` | Теги задачи |
+| `attachments.container_id` → `issues.id` | Вложения к задаче |
+
+---
+
+## 🧩 Плагины (ваша конфигурация)
+
+### Agile (Scrum/Kanban)
+- `agile_data` — данные по задачам (story points, позиция)
+- `agile_sprints` — спринты
+- `agile_colors` — цвета на доске
+
+### Checklists
+- `checklists` — чек-листы к задачам
+- `checklist_templates` — шаблоны
+
+### Easy Redmine
+- `easy_settings`, `easy_entity_assignments` — расширенные настройки
+- `easy_baseline_sources` — управление изменениями
+
+### ETL и интеграции
+- Много проектов с префиксами `ETL`, `ГИС МТ`, `ФСРАР`, `МЧД`
+
+---
+
+## 📊 Рекомендации по аналитике
+
+1. **SLA техподдержки:**
+   - Найти разницу между `created_on` и первым изменением `status_id` на "В разработке" (через `journals`)
+2. **Среднее время выполнения:**
+   - Через `journals`: время между `status_id=2` и `status_id=5`
+3. **Загрузка сотрудников:**
+   - Сумма `time_entries.hours` по `user_id` и `spent_on`
+4. **Качество оценки:**
+   - Сравнение `estimated_hours` и суммы `time_entries.hours`
+5. **Активность по проектам:**
+   - Количество задач, закрытых в месяц, по проектам
+6. **Фильтрация по клиентам:**
+   - Через `custom_values` с `custom_field_id=11` ("Заказчик")
+
+---
