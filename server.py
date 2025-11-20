@@ -1,4 +1,6 @@
 import logging
+import os
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -21,17 +23,22 @@ from ollama import generate
 from ollama import ChatResponse
 from ollama import AsyncClient
 
+# Load environment variables from .env file
+load_dotenv()
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+VERSION = "3.0"
+logger.info(f"Starting Analytics AI version: {VERSION}")
+
 # app = FastAPI()
-# Создаем приложение FastAPI с кастомными параметрами
 app = FastAPI(
     title="Analytics AI",
     description="Analytics AI",
-    version="3.0",
+    version=VERSION,
     docs_url="/docs", # Путь к Swagger UI
 )
 
@@ -40,15 +47,14 @@ ollama_client = AsyncClient()
 DB_ID_EGAIS = 'egais'
 DB_ID_REDMINE = 'redmine'
 DB_ID_EGAIS_UTM = 'egais_utm'
-DB_ID = DB_ID_EGAIS
 
 DB_TYPE_POSTGRES = 'postgres'
 DB_TYPE_MYSQL = 'mysql'
 DB_TYPE_VERTICA = 'vertica'
 DB_TYPE_MSSQL = 'mssql'
 
-DB_CONFIG_PG_ANALYTICS_AI = ""
-
+DB_CONFIG_PG_ANALYTICS_AI = os.getenv("DB_CONFIG_PG_ANALYTICS_AI")
+print(DB_CONFIG_PG_ANALYTICS_AI)
 SQL_MAX_TRY = 2
 
 NUM_CTX = 16000
@@ -341,7 +347,7 @@ async def post_ai_sql(request: QueryRequest):
               }
 
 
-    if request.messages is not None and len(model_details_list) > 0 and model_details_list[0] is not None:
+    if request.messages is not None:
 
         # ОПРЕДЕЛЕНИЕ РЕЖИМА РАБОТЫ
 
@@ -807,7 +813,7 @@ async def delete_databases(id: int):
 
 @app.get("/")
 def read_root():
-    return {"message": "Analytics AI"}
+    return {"project": "Analytics AI", "version": VERSION}
 
 
 
