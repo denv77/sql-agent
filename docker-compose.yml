@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  sql-agent:
+    build: .
+    container_name: sql-agent
+    network_mode: host
+    environment:
+      - DB_CONFIG_PG_ANALYTICS_AI=${DB_CONFIG_PG_ANALYTICS_AI}
+    restart: unless-stopped
+

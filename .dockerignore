@@ -1,0 +1,47 @@
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Documentation
+README.md
+*.md
+
+# Logs
+*.log
+
+# Test files
+test/
+tests/
+*_test.py
+test_*.py
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
