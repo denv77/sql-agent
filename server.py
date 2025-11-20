@@ -2,9 +2,12 @@ import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import asyncpg
 import aiomysql
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import vertica_python
 import uvicorn
 import re
 import json
@@ -28,7 +31,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Прототип AI",
     description="Прототип AI",
-    version="1.0",
+    version="2.0",
     docs_url="/docs-DjbdKsjfbkjs", # Путь к Swagger UI
 )
 
@@ -36,6 +39,7 @@ ollama_client = AsyncClient()
 
 DB_ID_EGAIS = 'egais'
 DB_ID_REDMINE = 'redmine'
+DB_ID_EGAIS_UTM = 'egais_utm'
 DB_ID = DB_ID_EGAIS
 
 # DB_CONFIG = ""
@@ -47,6 +51,15 @@ DB_CONFIG_MYSQL = {
     'password': '',
     'db': '',
     'charset': ''
+}
+DB_CONFIG_VERTICA = {
+    'host': '',
+    'port': ,
+    'user': '',
+    'password': '',
+    'database': '',
+    'connection_timeout': ,
+    'tlsmode': ''
 }
 
 SQL_MAX_TRY = 2
@@ -67,6 +80,7 @@ OLLAMA_MODEL = "qwen3:32b"
 # OLLAMA_MODEL = "deepseek-r1:32b"
 models = {'qwen3':'qwen3:32b',
           'qwen3think':'qwen3:32b',
+          'qwen3moe':'qwen3:30b',
           'gptoss':'gpt-oss:20b',
           'gemma3':'gemma3:27b'
           # 'qwen3large':'qwen3:235b',
@@ -87,7 +101,9 @@ ddl_instruction_file_redmine = 'ddl_redmine_instructions.txt'
 ddl_schema_file_redmine = 'ddl_redmine_schema.txt'
 ddl_instruction_file_egais = 'ddl_egais_instructions.txt'
 ddl_schema_file_egais = 'ddl_egais_schema.txt'
-router_system_prompt_file = 'router_v3.txt'
+ddl_instruction_file_egais_utm = 'ddl_vertica_instructions.txt'
+ddl_schema_file_egais_utm = 'ddl_vertica_schema.txt'
+router_system_prompt_file = 'router_v4.txt'
 
 with open(ddl_instruction_file_redmine, 'r') as file:
     instructions_redmine = file.read()
@@ -97,14 +113,26 @@ with open(ddl_instruction_file_egais, 'r') as file:
     instructions_egais = file.read()
 with open(ddl_schema_file_egais, 'r') as file:
     ddl_egais = file.read()
+with open(ddl_instruction_file_egais_utm, 'r') as file:
+    instructions_egais_utm = file.read()
+with open(ddl_schema_file_egais_utm, 'r') as file:
+    ddl_egais_utm = file.read()
 with open(router_system_prompt_file, 'r') as file:
     router_system_prompt = file.read()
 
 
+class Router(BaseModel):
+    decision: Optional[str] = None
+    database: Optional[str] = None
+    confidence: Optional[float] = None
+    reasoning: Optional[str] = None
+    response: Optional[str] = None
 class Message(BaseModel):
     role: str
     content: str
     mode: Optional[str] = None
+    database: Optional[str] = None
+    router: Optional[Router] = None
 class QueryRequest(BaseModel):
     messages: list[Message]
     model: str
@@ -143,7 +171,7 @@ alpaca_prompt = """Below is an instruction that describes a task, paired with an
     {}
 
     ### Response:
-    В ответе выведи свой смешной ответ со смайликами, потом только один SQl обернутый в ```sql ``` и потом, если хочешь выведи свои смешные дополнения со смайликами
+    В ответе выведи свои пояснения, если они необходимы, потом только один SQl обернутый в ```sql ```
     Пример, как нужно обернуть SQL
     ```sql
     SQL-код для ответа на вопрос
@@ -176,6 +204,42 @@ async def execute_sql_mysql(query: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# Пул потоков для выполнения синхронных операций
+executor = ThreadPoolExecutor(max_workers=10)
+
+async def execute_sql_vertica(query: str) -> List[Dict[str, Any]]:
+    """
+    Выполняет SQL-запрос к Vertica асинхронно
+    Возвращает список словарей, аналогично DictCursor в MySQL
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        rows = await loop.run_in_executor(executor, _execute_query_sync, query)
+        return rows
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении SQL-запроса: {query}, ошибка: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+def _execute_query_sync(query: str) -> List[Dict[str, Any]]:
+    """
+    Синхронное выполнение запроса (запускается в отдельном потоке)
+    """
+    conn = vertica_python.connect(**DB_CONFIG_VERTICA)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query)
+
+        # Получаем имена колонок
+        columns = [desc[0] for desc in cursor.description]
+
+        # Преобразуем результаты в список словарей (как DictCursor)
+        rows = cursor.fetchall()
+        result = [dict(zip(columns, row)) for row in rows]
+
+        return result
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # Примерная, не точная оценка количества токенов
@@ -268,22 +332,6 @@ async def queryPost(request: QueryRequest):
 
     user_query = request.messages[-1].content
 
-    mode = request.mode
-    if mode == 'auto':
-        mode = '' # тут будет функция определения режима работы
-        return {'extend': False,
-                'query': user_query,
-                'sql': '',
-                'message': f'Автоматический режим еще не реализован. Выберите ЕГАИС или Redmine.',
-                'data': [],
-                'model': models[request.model],
-                'tokens_count': 0,
-                'total_duration_sec': 0,
-                'mode': 'error'
-                }
-
-
-
     result = {'extend': False,
               'query': user_query,
               'sql': '',
@@ -291,42 +339,147 @@ async def queryPost(request: QueryRequest):
               'data': [],
               'model': models[request.model],
               'tokens_count': 0,
-              'total_duration_sec': 0,
-              'mode': 'error'
+              'total_duration_sec': 0
+              # 'router': 'error'
               }
 
     if request.messages is not None and models[request.model] is not None:
 
-        if mode == DB_ID_EGAIS:
+        # ОПРЕДЕЛЕНИЕ РЕЖИМА РАБОТЫ
+
+        mode = request.mode
+        router = None
+        database = request.mode # Если mode не auto, то должно совпадать с mode
+
+        if mode == 'auto' and request.extend:
+            router = request.messages[-1].router
+            database = request.messages[-1].router.database
+
+        if mode == 'auto' and not request.extend:
+
+            filtered_messages = []
+
+            pairs = zip(request.messages, request.messages[1:])
+            for user_msg, assistant_msg in pairs:
+                if (
+                        user_msg.role == "user"
+                        and assistant_msg.role == "assistant"
+                        and assistant_msg.mode == mode
+                ):
+                    filtered_messages.extend([
+                        {"role": user_msg.role, "content": user_msg.content},
+                        {"role": assistant_msg.role, "content": assistant_msg.router.model_dump_json(exclude_none=True)},
+                    ])
+
+            # Добавляем последнее user сообщение
+            if request.messages[-1].role == "user":
+                filtered_messages.append({"role": request.messages[-1].role, "content": request.messages[-1].content})
+
+            messages = [{"role": "system", "content": router_system_prompt}]
+            # messages += [m.model_dump() for m in request.messages]
+            messages += filtered_messages
+
+            logger.info("ROUTER messages:\n%s", messages)
+
+            max_tokens = NUM_CTX
+            if request.model == 'gemma3':
+                max_tokens = NUM_CTX_GEMMA
+
+            # Подсчет токенов примерный, поэтому вычитаем 1000 токенов из max_tokens, на всякий случай
+            messages, tokens_count = trim_messages_to_token_limit(messages, request.model, max_tokens=max_tokens-1000)
+
+            think = OLLAMA_THINK
+            if request.model == 'qwen3':
+                logger.info(f"Это qwen3. Отключаем reasoning")
+                think = False
+
+            logger.info(f'----- Запрос в РОУТЕР. Модель: {models[request.model]}\n')
+
+            response = await run_chat(models[request.model], messages, think, max_tokens)
+            logger.info(f"Ответ модели: {response}")
+
+            response_after_think_splitted = re.split(r'</think>', response)
+            response_after_think = response_after_think_splitted[-1].strip()
+            router = json.loads(response_after_think)
+            # Пример ответа
+            # {
+            #   "decision": "database" | "general" | "clarification",
+            #   "database": "egais" | "redmine" | null,
+            #   "confidence": 0.0-1.0,
+            #   "reasoning": "краткое объяснение",
+            #   "response": "текст ответа (только если type=general или clarification)"
+            # }
+
+            if router['decision'] == "database":
+                database = router['database']
+            else:
+                return {'extend': False,
+                        'query': user_query,
+                        'sql': '',
+                        'message': router['response'],
+                        'data': [],
+                        'model': models[request.model],
+                        'tokens_count': 0,
+                        'total_duration_sec': 0,
+                        'mode': mode,
+                        'router': router
+                        }
+
+        # ЗАВЕРШЕНО ОПРЕДЕЛЕНИЕ РЕЖИМА РАБОТЫ
+
+
+
+        # ПОДГОТОВКА ДАННЫХ ДЛЯ ЗАПРОСА В МОДЕЛЬ ИЛИ В БД
+
+        if database == DB_ID_EGAIS:
             instructions = instructions_egais
             ddl = ddl_egais
-        else:
+        elif database == DB_ID_REDMINE:
             instructions = instructions_redmine
             ddl = ddl_redmine
+        elif database == DB_ID_EGAIS_UTM:
+            instructions = instructions_egais_utm
+            ddl = ddl_egais_utm
+        else:
+            raise HTTPException(status_code=500, detail=f"Промт для базы данных ({database}) не поддерживается")
 
         filtered_messages = []
+        clarifications_temp = []
 
         pairs = zip(request.messages, request.messages[1:])
         for user_msg, assistant_msg in pairs:
             if (
                     user_msg.role == "user"
                     and assistant_msg.role == "assistant"
-                    and assistant_msg.mode == mode
+                    and assistant_msg.database == database
             ):
+                filtered_messages.extend(clarifications_temp)
+                clarifications_temp = []
                 filtered_messages.extend([
                     {"role": user_msg.role, "content": user_msg.content},
                     {"role": assistant_msg.role, "content": assistant_msg.content},
                 ])
+            if (
+                    user_msg.role == "user"
+                    and assistant_msg.role == "assistant"
+                    and assistant_msg.mode == "auto"
+                    and assistant_msg.router.decision == "clarification"
+            ):
+                clarifications_temp.extend([
+                    {"role": user_msg.role, "content": user_msg.content},
+                    {"role": assistant_msg.role, "content": assistant_msg.content},
+                ])
 
-        # Добавляем последнее user сообщение
+        # Добавляем последнее clarifications_temp и user сообщение
         if request.messages[-1].role == "user":
+            filtered_messages.extend(clarifications_temp)
             filtered_messages.append({"role": request.messages[-1].role, "content": request.messages[-1].content})
 
         messages = [{"role": "system", "content": alpaca_prompt.format(instructions, ddl, '')}]
         # messages += [m.model_dump() for m in request.messages]
         messages += filtered_messages
 
-        logger.info("messages:\n%s", messages)
+        logger.info("DATABASE messages:\n%s", messages)
 
         max_tokens = NUM_CTX
         if request.model == 'gemma3':
@@ -339,6 +492,8 @@ async def queryPost(request: QueryRequest):
         if request.model == 'qwen3':
             logger.info(f"Это qwen3. Отключаем reasoning")
             think = False
+
+
 
 
         ### GENERATE SQL
@@ -374,7 +529,9 @@ async def queryPost(request: QueryRequest):
                           'model': models[request.model],
                           'tokens_count': tokens_count,
                           'total_duration_sec': round(time.perf_counter() - start_total, 2),
-                          'mode': mode
+                          'mode': mode,
+                          'database': database,
+                          'router': router
                           }
 
             else:
@@ -386,7 +543,9 @@ async def queryPost(request: QueryRequest):
                           'model': models[request.model],
                           'tokens_count': tokens_count,
                           'total_duration_sec': round(time.perf_counter() - start_total, 2),
-                          'mode': mode
+                          'mode': mode,
+                          'database': database,
+                          'router': router
                           }
         else:
             try_idx = 1
@@ -407,10 +566,14 @@ async def queryPost(request: QueryRequest):
                         logger.info(f"Готовый SQL для запроса в БД:\n{sql}")
 
                         result_sql = None
-                        if mode == DB_ID_EGAIS:
+                        if database == DB_ID_EGAIS:
                             result_sql = await execute_sql_pg(sql)
-                        else:
+                        elif database == DB_ID_REDMINE:
                             result_sql = await execute_sql_mysql(sql)
+                        elif database == DB_ID_EGAIS_UTM:
+                            result_sql = await execute_sql_vertica(sql)
+                        else:
+                            raise HTTPException(status_code=500, detail=f"База данных ({database}) не поддерживается")
 
                         logger.info(f"Результат запроса в БД count: {len(result_sql)}")
                         # json_string_pretty = json.dumps(result_sql, indent=2, cls=CustomJSONEncoder, ensure_ascii=False)
@@ -424,7 +587,9 @@ async def queryPost(request: QueryRequest):
                                   'model': models[request.model],
                                   'tokens_count': tokens_count,
                                   'total_duration_sec': round(time.perf_counter() - start_total, 2),
-                                  'mode': mode
+                                  'mode': mode,
+                                  'database': database,
+                                  'router': router
                                   }
 
                     else:
@@ -437,7 +602,9 @@ async def queryPost(request: QueryRequest):
                                   'model': models[request.model],
                                   'tokens_count': tokens_count,
                                   'total_duration_sec': round(time.perf_counter() - start_total, 2),
-                                  'mode': mode
+                                  'mode': mode,
+                                  'database': database,
+                                  'router': router
                                   }
 
                     break
@@ -453,7 +620,9 @@ async def queryPost(request: QueryRequest):
                                   'model': models[request.model],
                                   'tokens_count': tokens_count,
                                   'total_duration_sec': round(time.perf_counter() - start_total, 2),
-                                  'mode': mode
+                                  'mode': mode,
+                                  'database': database,
+                                  'router': router
                                   }
                         break
 

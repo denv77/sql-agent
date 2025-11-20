@@ -1,0 +1,196 @@
+Таблицы в csv формате:
+
+Schema;Table;Table Comment;;
+utm;ReportImported;Отчет об импорте;;
+utm;ReportProduced;Отчет о производстве;;
+egais_or_nn2;wrh_WayBill;Информация о транспортных накладных;;
+egais_or_cheque;buffer_production_chq_btl;Данные по продажам/возвратам алкогольной продукции;;
+nsi;ADDR_COUNTRY;Справочник стран;;
+nsi;ADDR_REGION;Справочник регионов РФ;;
+nsi;Clients;Справочник организаций;;
+nsi;NSI_Clients;Справочник организаций;;
+nsi;NSI_Products;Справочник алкогольной продукции;;
+nsi;Product_PackagingType;Справочник типов упаковки;;
+nsi;Product_Vid2021;Справочник видов продукции;;
+nsi;Product_Vid2025;Справочник видов продукции;;
+nsi;Product_Vid_vinodel;Справочник видов продукции;;
+
+
+Колонки в csv формате:
+
+Schema;Table;Column;Type;Column Comment;Внешний ключ
+utm;ReportImported;PosId;int;Уникальный идентификатор позиции (строки) в таблице.;
+utm;ReportImported;iid;int;Внутренний идентификатор записи (не обязательно уникальный).;
+utm;ReportImported;ChangeDate;timestamp(3);Дата и время изменения записи.;
+utm;ReportImported;DocId;varchar(50);Внутренний идентификатор документа импорта.;
+utm;ReportImported;OwnerId;varchar(50);Идентификатор владельца продукции.;nsi.Clients/OwnerId
+utm;ReportImported;DocNumber;varchar(100);Номер документа импорта.;
+utm;ReportImported;DocDate;date;Дата документа импорта.;
+utm;ReportImported;ImportedDate;date;Дата фактического ввоза продукции.;
+utm;ReportImported;ImporterOwnerid;varchar(50);Идентификатор импортера.;nsi.Clients/OwnerId
+utm;ReportImported;SupplierOwnerid;varchar(50);Идентификатор поставщика.;nsi.Clients/OwnerId
+utm;ReportImported;GTDNUMBER;varchar(100);Номер грузовой таможенной декларации (GTD).;
+utm;ReportImported;GTDDate;date;Дата грузовой таможенной декларации.;
+utm;ReportImported;ContractNUMBER;varchar(100);Номер контракта на поставку.;
+utm;ReportImported;ContractDate;date;Дата контракта.;
+utm;ReportImported;Country_Code;varchar(3);Код страны происхождения.;nsi.ADDR_COUNTRY/country_code
+utm;ReportImported;wbid;varchar(50);Идентификатор склада/места хранения.;
+utm;ReportImported;Alc_Code;int;Код алкогольной продукции.;
+utm;ReportImported;Quantity;numeric(18,4);Количество продукции (в литрах или штуках).;
+utm;ReportImported;Party;varchar(100);Партия продукции (серийный номер партии).;
+utm;ReportImported;F1RegId;varchar(50);Регистрационный номер формы Ф1 (для учета алкоголя).;
+utm;ReportImported;AlcPercent;numeric(18,3);Процент алкоголя в продукции (как указано в документах).;
+utm;ReportImported;INN;varchar(12);ИНН компании (налоговый идентификатор).;nsi.Clients/INN
+utm;ReportImported;KPP;varchar(9);КПП компании (код причины постановки на учет).;
+utm;ReportImported;Region_Code;varchar(2);Код региона (место регистрации или поставки).;nsi.ADDR_REGION/Region_Code
+utm;ReportImported;ProductType_Code;varchar(3);Тип продукции (например, вино, водка, пиво).;
+utm;ReportImported;ProductVid_Code;varchar(10);Вид продукции (уточнение типа).;nsi.Product_Vid2025/CodeVid_egais
+utm;ReportImported;isUnpacked;boolean;Признак того, что продукция не расфасована.;
+utm;ReportImported;Capacity;numeric(18,4);Ёмкость единицы продукции (литры).;
+utm;ReportImported;AlcPerc;numeric(18,3);Алкогольная крепость продукции (повторно для контроля).;
+utm;ReportImported;UNFSM_FLAG;boolean;Флаг, связанный с ЕГАИС/учетом (например, уникальный номер ФСМ).;
+utm;ReportImported;BONDEDWAREHOUSE;varchar(50);Идентификатор склада временного хранения (бонди).;
+utm;ReportProduced;PosId;int;Уникальный идентификатор позиции (строки) в таблице.;
+utm;ReportProduced;iid;int;Внутренний идентификатор записи (не обязательно уникальный).;
+utm;ReportProduced;ChangeDate;timestamp(3);Дата и время изменения записи.;
+utm;ReportProduced;DocId;varchar(50);Идентификатор производственного документа.;
+utm;ReportProduced;OperationType;varchar(50);Тип операции (например, производство, переработка).;
+utm;ReportProduced;OwnerId;varchar(50);Идентификатор владельца продукции.;nsi.Clients/OwnerId
+utm;ReportProduced;DocNumber;varchar(100);Номер документа производства.;
+utm;ReportProduced;DocDate;date;Дата документа производства.;
+utm;ReportProduced;ProducedDate;date;Дата фактического производства.;
+utm;ReportProduced;wbid;varchar(50);Идентификатор склада/места хранения.;
+utm;ReportProduced;Alc_Code;int;Код алкогольной продукции.;
+utm;ReportProduced;Quantity;numeric(18,4);Количество произведенной продукции.;
+utm;ReportProduced;AlcPercent;numeric(18,3);Процент алкоголя в произведенной продукции.;
+utm;ReportProduced;INN;varchar(12);ИНН предприятия.;nsi.Clients/INN
+utm;ReportProduced;KPP;varchar(9);КПП предприятия.;
+utm;ReportProduced;Region_Code;varchar(2);Код региона.;nsi.ADDR_REGION/Region_Code
+utm;ReportProduced;ProductType_Code;varchar(5);Тип продукции (например, вино, водка, пиво).;
+utm;ReportProduced;ProductVid_Code;varchar(10);Вид продукции (уточнение типа).;nsi.Product_Vid2025/CodeVid_egais
+utm;ReportProduced;isUnpacked;boolean;Признак того, что продукция не расфасована.;
+utm;ReportProduced;Capacity;numeric(18,4);Ёмкость единицы продукции.;
+utm;ReportProduced;AlcPerc;numeric(18,3);Алкогольная крепость продукции.;
+utm;ReportProduced;PosIdentity;varchar(50);Дополнительный идентификатор позиции (для связи с другими таблицами).;
+egais_or_nn2;wrh_WayBill;wbid;varchar(50);Уникальный идентификатор транспортной накладной (ТТН).;nsi.wrh_WayBillPos/wbid
+egais_or_nn2;wrh_WayBill;iid;int;Внутренний идентификатор записи.;
+egais_or_nn2;wrh_WayBill;Client_id;varchar(50);Идентификатор клиента, инициировавшего создание накладной.;
+egais_or_nn2;wrh_WayBill;Number;varchar(200);Номер транспортной накладной.;
+egais_or_nn2;wrh_WayBill;Date;date;Дата оформления транспортной накладной.;
+egais_or_nn2;wrh_WayBill;Type;varchar(50);Тип документа (например, отгрузка, возврат и т.д.).;
+egais_or_nn2;wrh_WayBill;Shipper;varchar(50);Идентификатор отправителя (грузоотправителя).;nsi.Clients/OwnerId
+egais_or_nn2;wrh_WayBill;Consignee;varchar(50);Идентификатор получателя (грузополучателя).;nsi.Clients/OwnerId
+egais_or_nn2;wrh_WayBill;imported_id;int;Идентификатор исходного импортированного документа (связь с другими таблицами).;
+egais_or_nn2;wrh_WayBill;ShippingDate;date;Дата отгрузки продукции.;
+egais_or_nn2;wrh_WayBill;InsertDate;timestamp(3);Дата и время вставки записи в базу данных (используется для партиционирования).;
+egais_or_nn2;wrh_WayBill;TRAN_COMPANY;varchar(510);Наименование транспортной компании.;
+egais_or_nn2;wrh_WayBill;TRAN_LOADPOINT;varchar(4000);Место погрузки груза.;
+egais_or_nn2;wrh_WayBill;TRAN_UNLOADPOINT;varchar(4000);Место выгрузки груза.;
+egais_or_nn2;wrh_WayBill;EGAISFixNumber;varchar(50);Номер фиксации документа в системе ЕГАИС.;
+egais_or_nn2;wrh_WayBill;EGAISFixDate;date;Дата фиксации документа в системе ЕГАИС.;
+egais_or_nn2;wrh_WayBill;fileDocType;varchar(50);Тип исходного файла документа (например, XML-формат).;
+egais_or_nn2;wrh_WayBill;TRAN_CAR;varchar(510);Регистрационный номер или идентификатор транспортного средства.;
+egais_or_nn2;wrh_WayBill;TRAN_TRAILER;varchar(510);Регистрационный номер или идентификатор прицепа.;
+egais_or_nn2;wrh_WayBillPos;wbpid;int;Уникальный идентификатор позиции транспортной накладной.;
+egais_or_nn2;wrh_WayBillPos;wbid;varchar(50);Идентификатор транспортной накладной (внешний ключ к таблице wrh_WayBill).;nsi.wrh_WayBill/wbid
+egais_or_nn2;wrh_WayBillPos;ProductCode;int;Код алкогольной продукции (Alc_Code).;
+egais_or_nn2;wrh_WayBillPos;Quantity;numeric(18,4);Количество продукции в позиции (в литрах или единицах, в зависимости от контекста).;
+egais_or_nn2;wrh_WayBillPos;Price;numeric(18,4);Цена за единицу продукции.;
+egais_or_nn2;wrh_WayBillPos;FormA;varchar(50);Номер формы А (сопроводительный документ производителя).;
+egais_or_nn2;wrh_WayBillPos;LastFormB;varchar(50);Номер последней формы Б (документ о перемещении между участниками).;
+egais_or_nn2;wrh_WayBillPos;ImportedFromIID;int;Идентификатор исходной записи, из которой импортирована позиция (для отслеживания источника данных).;
+egais_or_nn2;wrh_WayBillPos;insertDate;timestamp(3);Дата и время вставки записи в базу данных (используется для партиционирования по году).;
+egais_or_nn2;wrh_WayBillPos;AlcPercent;numeric(18,3);Алкогольная крепость продукции в процентах (% об.).;
+egais_or_cheque;production_chq_btl;bcode;varchar(255);Штрихкод или код маркировки единицы продукции (например, КИЗ).;
+egais_or_cheque;production_chq_btl;price;numeric(18,2);Цена единицы продукции.;
+egais_or_cheque;production_chq_btl;vozvrat;boolean;Признак возврата товара (true — возврат, false — продажа).;
+egais_or_cheque;production_chq_btl;ean;varchar(14);Код EAN/UPC товара.;
+egais_or_cheque;production_chq_btl;shift;int;Номер смены кассира.;
+egais_or_cheque;production_chq_btl;number;int;Номер чека в рамках смены.;
+egais_or_cheque;production_chq_btl;dt;timestamp;Дата и время совершения операции (продажи/возврата).;
+egais_or_cheque;production_chq_btl;ownerId;varchar(12);Идентификатор владельца (участника оборота алкоголя).;nsi.Clients/OwnerId
+egais_or_cheque;production_chq_btl;transport_id;varchar(36);Уникальный идентификатор транзакции (например, UUID).;
+egais_or_cheque;production_chq_btl;kassa;varchar(100);Идентификатор или наименование кассового аппарата.;
+egais_or_cheque;production_chq_btl;job_code;varchar(30);Код операции или задания.;
+egais_or_cheque;production_chq_btl;num_in_job;int;Порядковый номер записи в рамках задания.;
+egais_or_cheque;production_chq_btl;alc_code;int;Код алкогольной продукции.;
+egais_or_cheque;production_chq_btl;form2;varchar(50);Номер формы 2 (документ о розливе, при наличии).;
+egais_or_cheque;production_chq_btl;billnumber;varchar(50);Номер счёта или кассового чека.;
+egais_or_cheque;production_chq_btl;ttnnumber;varchar(50);Номер транспортной накладной, связанной с продажей.;
+egais_or_cheque;production_chq_btl;quantity;numeric(18,3);Количество проданной/возвращённой продукции.;
+egais_or_cheque;production_chq_btl;beer;boolean;Признак пивной продукции (true — пиво или пивной напиток).;
+egais_or_cheque;production_chq_btl;insertdate;timestamp;Дата и время вставки записи в буферную таблицу.;
+nsi;ADDR_COUNTRY;id;int;Внутренний идентификатор записи справочника стран.;
+nsi;ADDR_COUNTRY;country_code;varchar(3);Трёхбуквенный код страны ;nsi.Clients/country_code
+nsi;ADDR_COUNTRY;short_name;varchar(128);Краткое наименование страны.;
+nsi;ADDR_COUNTRY;full_name;varchar(128);Полное официальное наименование страны.;
+nsi;ADDR_COUNTRY;codea2;varchar(2);Двухбуквенный код страны по стандарту ;
+nsi;ADDR_COUNTRY;codea3;varchar(3);Альтернативный трёхбуквенный код страны (дублирует country_code в большинстве случаев).;
+nsi;ADDR_REGION;region_code;varchar(2);"Код субъекта Российской Федерации (например, ""77"" — Москва).";nsi.Clients/region_code
+nsi;ADDR_REGION;country_code;varchar(3);"Код страны, к которой относится регион (обычно ""RUS"").";nsi.Clients/country_code
+nsi;ADDR_REGION;name;varchar(80);Наименование региона.;
+nsi;ADDR_REGION;socr;varchar(20);"Сокращённое наименование региона (например, ""г"", ""обл"", ""респ"").";
+nsi;ADDR_REGION;code;varchar(13);Код региона по классификатору ОКАТО/ОКТМО.;
+nsi;ADDR_REGION;index;varchar(6);Почтовый индекс региона (основной или центральный).;
+nsi;ADDR_REGION;gninmb;varchar(4);Код ГНИНМБ (Государственного номера налогового инспекторского участка).;
+nsi;Clients;id;int;Внутренний идентификатор клиента.;
+nsi;Clients;owner_id;varchar(50);Уникальный идентификатор участника оборота алкоголя (в системе ЕГАИС).;
+nsi;Clients;full_name;varchar(510);Полное наименование организации.;
+nsi;Clients;short_name;varchar(128);Краткое наименование организации.;
+nsi;Clients;inn;varchar(12);ИНН организации.;
+nsi;Clients;kpp;varchar(9);КПП организации.;
+nsi;Clients;country_code;varchar(3);Код страны регистрации организации.;nsi.ADDR_COUNTRY/country_code
+nsi;Clients;region_code;varchar(2);Код региона регистрации организации.;nsi.ADDR_REGION/region_code
+nsi;Clients;dejure_address;varchar(510);Юридический адрес организации.;
+nsi;Clients;fact_address;varchar(4000);Фактический адрес организации.;
+nsi;Clients;isLicense;boolean;Признак наличия лицензии на производство/оборот алкоголя.;
+nsi;Clients;version_ts;int;Метка версии записи (для отслеживания изменений).;
+nsi;Clients;pass_owner_id;varchar(64);Идентификатор владельца в системе паспортизации (при наличии).;
+nsi;NSI_Clients;ID;int;Внутренний идентификатор записи.;
+nsi;NSI_Clients;fp_ID;int;Идентификатор в системе федерального паспорта (при наличии).;
+nsi;NSI_Clients;Owner_ID;varchar(50);Уникальный идентификатор участника оборота алкоголя (в системе ЕГАИС).;
+nsi;NSI_Clients;Client_Code;varchar(64);Внутренний код клиента в справочнике.;
+nsi;NSI_Clients;Full_Name;varchar(510);Полное наименование организации.;
+nsi;NSI_Clients;Short_Name;varchar(128);Краткое наименование организации.;
+nsi;NSI_Clients;INN;varchar(12);ИНН организации.;
+nsi;NSI_Clients;KPP;varchar(9);КПП организации.;
+nsi;NSI_Clients;Country_Code;varchar(3);Код страны регистрации организации.;nsi.ADDR_COUNTRY/country_code
+nsi;NSI_Clients;Region_Code;varchar(2);Код региона регистрации организации.;nsi.ADDR_REGION/region_code
+nsi;NSI_Clients;Dejure_Address;varchar(510);Юридический адрес организации.;
+nsi;NSI_Clients;Fact_Address;varchar(4000);Фактический адрес организации.;
+nsi;NSI_Clients;isLicense;boolean;Признак наличия лицензии на производство/оборот алкоголя.;
+nsi;NSI_Clients;Version_ts;int;Метка версии записи (для отслеживания изменений).;
+nsi;NSI_Clients;pass_owner_id;varchar(64);Идентификатор владельца в системе паспортизации.;
+nsi;NSI_Clients;isTS;boolean;Признак участника системы товарных знаков.;
+nsi;NSI_Clients;Status_id;varchar(50);Текущий статус клиента (например, активен, заблокирован).;
+nsi;NSI_Products;Alc_Code;int;Уникальный числовой код алкогольной продукции.;
+nsi;NSI_Products;Alc_Code_varchar;varchar(64);Текстовое представление кода продукции (для совместимости).;
+nsi;NSI_Products;Alc_Name_Full;varchar(510);Полное наименование алкогольной продукции.;
+nsi;NSI_Products;Client_Code;varchar(64);Код клиента-производителя или владельца продукции.;nsi.Clients/OwnerId
+nsi;NSI_Products;Owner_ID;varchar(50);Идентификатор владельца продукции в системе ЕГАИС.;nsi.Clients/OwnerId
+nsi;NSI_Products;Capacity;numeric(18,4);Объём единицы продукции (в литрах).;
+nsi;NSI_Products;AlcPerc;numeric(18,3);Фактическая алкогольная крепость (% об.).;
+nsi;NSI_Products;AlcPercMin;numeric(18,3);Минимально допустимая крепость (% об.).;
+nsi;NSI_Products;AlcPercMax;numeric(18,3);Максимально допустимая крепость (% об.).;
+nsi;NSI_Products;ProductType_Code;varchar(3);Код типа продукции;
+nsi;NSI_Products;ProductVid_Code;varchar(10);Код вида продукции ;nsi.Product_Vid2025/CodeVid_egais
+nsi;NSI_Products;Country_Code;varchar(3);Код страны происхождения продукции.;nsi.ADDR_COUNTRY/country_code
+nsi;NSI_Products;isUnpacked;boolean;Признак розлива (продукция не в заводской упаковке).;
+nsi;NSI_Products;Version_ts;int;Метка версии записи (для отслеживания изменений).;
+nsi;NSI_Products;Importer_OwnerID;varchar(50);Идентификатор импортёра (для импортной продукции).;nsi.Clients/OwnerId
+nsi;NSI_Products;BRAND;varchar(510);Наименование бренда продукции.;
+nsi;NSI_Products;PACKAGE_TYPE_CODE;varchar(5);Код типа упаковки;nsi.Product_PackagingType/PackageType
+nsi;NSI_Products;shelflife;int;Срок годности продукции (в днях).;
+nsi;Product_PackagingType;id;int;Внутренний идентификатор записи.;
+nsi;Product_PackagingType;PackageType;varchar(5);Код типа упаковки (соответствует PACKAGE_TYPE_CODE в NSI_Products).;nsi.NSI_Products/PACKAGE_TYPE_CODE
+nsi;Product_PackagingType;Package_Description;varchar(500);Описание типа упаковки.;
+nsi;Product_PackagingType;isUsed;boolean;Признак активности записи (используется ли тип упаковки).;
+nsi;Product_PackagingType;UseerName;varchar(50);"Имя пользователя, внесшего или изменившего запись (опечатка в названии поля: ""UseerName"").";
+nsi;Product_Vid2025;CodeVid_egais;varchar(5);Код вида продукции по классификатору ЕГАИС (актуален на 2025 г.).;nsi.NSI_Products/ProductVid_Code
+nsi;Product_Vid2025;Vid_Description;varchar(500);Описание вида продукции.;
+nsi;Product_Vid2025;CodeVid_classifier;varchar(50);Код вида по внутреннему или внешнему классификатору.;
+nsi;Product_Vid2025;GroupProduct;varchar(50);Группа продукции.;
+nsi;Product_Vid2025;CodeVid_TNVED;varchar(4000);Коды ТН ВЭД ЕАЭС, соответствующие данному виду продукции.;
+nsi;Product_Vid2025;ProductType_Code;varchar(3);Код типа продукции, к которому относится данный вид.;
+nsi;Product_Vid_vinodel;CodeVid_egais;varchar(5);Код вида винодельческой продукции по ЕГАИС.;
+nsi;Product_Vid_vinodel;Vid_Description;varchar(500);Описание вида винодельческой продукции.;
