@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Прототип AI",
     description="Прототип AI",
-    version="2.0",
+    version="2.1",
     docs_url="/docs-DjbdKsjfbkjs", # Путь к Swagger UI
 )
 
@@ -66,6 +66,7 @@ SQL_MAX_TRY = 2
 
 NUM_CTX_GEMMA = 6000 # gemma3
 NUM_CTX = 16000
+NUM_CTX_VERTICA = 40000
 # NUM_CTX = 64000 # все остальные тянут 64000
 # NUM_CTX = 16000 # все остальные оптимально
 
@@ -484,6 +485,8 @@ async def queryPost(request: QueryRequest):
         max_tokens = NUM_CTX
         if request.model == 'gemma3':
             max_tokens = NUM_CTX_GEMMA
+        if database == DB_ID_EGAIS_UTM:
+            max_tokens = NUM_CTX_VERTICA
 
         # Подсчет токенов примерный, поэтому вычитаем 1000 токенов из max_tokens, на всякий случай
         messages, tokens_count = trim_messages_to_token_limit(messages, request.model, max_tokens=max_tokens-1000)
