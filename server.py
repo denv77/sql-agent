@@ -29,10 +29,10 @@ logger = logging.getLogger(__name__)
 # app = FastAPI()
 # Создаем приложение FastAPI с кастомными параметрами
 app = FastAPI(
-    title="Прототип AI",
-    description="Прототип AI",
-    version="2.1",
-    docs_url="/docs-DjbdKsjfbkjs", # Путь к Swagger UI
+    title="Analytics AI",
+    description="Analytics AI",
+    version="3.0",
+    docs_url="/docs", # Путь к Swagger UI
 )
 
 ollama_client = AsyncClient()
@@ -42,55 +42,20 @@ DB_ID_REDMINE = 'redmine'
 DB_ID_EGAIS_UTM = 'egais_utm'
 DB_ID = DB_ID_EGAIS
 
-# DB_CONFIG = ""
-DB_CONFIG_PG = ""
-DB_CONFIG_MYSQL = {
-    'host': '',
-    'port': ,
-    'user': '',
-    'password': '',
-    'db': '',
-    'charset': ''
-}
-DB_CONFIG_VERTICA = {
-    'host': '',
-    'port': ,
-    'user': '',
-    'password': '',
-    'database': '',
-    'connection_timeout': ,
-    'tlsmode': ''
-}
+DB_TYPE_POSTGRES = 'postgres'
+DB_TYPE_MYSQL = 'mysql'
+DB_TYPE_VERTICA = 'vertica'
+DB_TYPE_MSSQL = 'mssql'
+
+DB_CONFIG_PG_ANALYTICS_AI = ""
 
 SQL_MAX_TRY = 2
 
-NUM_CTX_GEMMA = 6000 # gemma3
 NUM_CTX = 16000
+NUM_CTX_GEMMA = 6000
 NUM_CTX_VERTICA = 40000
 # NUM_CTX = 64000 # все остальные тянут 64000
 # NUM_CTX = 16000 # все остальные оптимально
-
-# OLLAMA_MODEL = "qwq"
-# OLLAMA_MODEL = "qwen2.5-coder:32b"
-# OLLAMA_MODEL = "gemma3:27b"
-# OLLAMA_MODEL = "phi4"
-OLLAMA_MODEL = "qwen3:32b"
-# OLLAMA_MODEL = "phi4:14b-q8_0"
-# OLLAMA_MODEL = "hf.co/bartowski/mistralai_Mistral-Small-3.1-24B-Instruct-2503-GGUF:Q6_K_L"
-# OLLAMA_MODEL = "deepseek-r1:14b"
-# OLLAMA_MODEL = "deepseek-r1:32b"
-models = {'qwen3':'qwen3:32b',
-          'qwen3think':'qwen3:32b',
-          'qwen3moe':'qwen3:30b',
-          'gptoss':'gpt-oss:20b',
-          'gemma3':'gemma3:27b'
-          # 'qwen3large':'qwen3:235b',
-          # 'devstral':'devstral:24b',
-          # 'phi4':'phi4',
-          # 'mistral3.1':'hf.co/bartowski/mistralai_Mistral-Small-3.1-24B-Instruct-2503-GGUF:Q6_K_L',
-
-          }
-
 
 OLLAMA_THINK = None # Думает (аналог /think в запросе)
 # OLLAMA_THINK = False # Не думает (аналог /no_think в запросе)
@@ -98,28 +63,11 @@ OLLAMA_THINK = None # Думает (аналог /think в запросе)
 
 
 
-ddl_instruction_file_redmine = 'ddl_redmine_instructions.txt'
-ddl_schema_file_redmine = 'ddl_redmine_schema.txt'
-ddl_instruction_file_egais = 'ddl_egais_instructions.txt'
-ddl_schema_file_egais = 'ddl_egais_schema.txt'
-ddl_instruction_file_egais_utm = 'ddl_vertica_instructions.txt'
-ddl_schema_file_egais_utm = 'ddl_vertica_schema.txt'
 router_system_prompt_file = 'router_v4.txt'
-
-with open(ddl_instruction_file_redmine, 'r') as file:
-    instructions_redmine = file.read()
-with open(ddl_schema_file_redmine, 'r') as file:
-    ddl_redmine = file.read()
-with open(ddl_instruction_file_egais, 'r') as file:
-    instructions_egais = file.read()
-with open(ddl_schema_file_egais, 'r') as file:
-    ddl_egais = file.read()
-with open(ddl_instruction_file_egais_utm, 'r') as file:
-    instructions_egais_utm = file.read()
-with open(ddl_schema_file_egais_utm, 'r') as file:
-    ddl_egais_utm = file.read()
 with open(router_system_prompt_file, 'r') as file:
     router_system_prompt = file.read()
+
+
 
 
 class Router(BaseModel):
@@ -139,6 +87,27 @@ class QueryRequest(BaseModel):
     model: str
     extend: bool
     mode: str
+
+class Database(BaseModel):
+    id: Optional[int] = None
+    databaseType: str
+    displayName: str
+    internalName: str
+    host: str
+    port: int
+    databaseName: str
+    username: str
+    password: str
+    instructions: Optional[str] = None
+    ddlSchema: Optional[str] = None
+    ddlSchemaAi: Optional[str] = None
+    enabled: Optional[bool] = None
+    description: Optional[str] = None
+    # numCtx: Optional[int] = None
+    # temperature: Optional[float] = None
+    # topP: Optional[float] = None
+
+
 
 
 # Custom JSON encoder to handle dates and other special types
@@ -181,9 +150,26 @@ alpaca_prompt = """Below is an instruction that describes a task, paired with an
 
 
 
-async def execute_sql_pg(query: str):
+
+async def execute_sql_analytics_ai(query: str, params: list | tuple = None):
     try:
-        conn = await asyncpg.connect(DB_CONFIG_PG)
+        conn = await asyncpg.connect(DB_CONFIG_PG_ANALYTICS_AI)
+        try:
+            if params:
+                rows = await conn.fetch(query, *params)
+            else:
+                rows = await conn.fetch(query)
+        finally:
+            await conn.close()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении SQL-запроса: {query}, ошибка: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+async def execute_sql_pg(query: str, database_details: dict):
+    try:
+        conn = await asyncpg.connect(user=database_details['username'], password=database_details['password'], host=database_details['host'], port=database_details['port'], database=database_details['database_name'])
         rows = await conn.fetch(query)
         await conn.close()
         return [dict(row) for row in rows]
@@ -192,9 +178,9 @@ async def execute_sql_pg(query: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-async def execute_sql_mysql(query: str):
+async def execute_sql_mysql(query: str, database_details: dict):
     try:
-        conn = await aiomysql.connect(**DB_CONFIG_MYSQL)
+        conn = await aiomysql.connect(user=database_details['username'], password=database_details['password'], host=database_details['host'], port=database_details['port'], db=database_details['database_name'], charset='utf8mb4')
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             await cursor.execute(query)
             rows = await cursor.fetchall()
@@ -208,24 +194,24 @@ async def execute_sql_mysql(query: str):
 # Пул потоков для выполнения синхронных операций
 executor = ThreadPoolExecutor(max_workers=10)
 
-async def execute_sql_vertica(query: str) -> List[Dict[str, Any]]:
+async def execute_sql_vertica(query: str, database_details: dict) -> List[Dict[str, Any]]:
     """
     Выполняет SQL-запрос к Vertica асинхронно
     Возвращает список словарей, аналогично DictCursor в MySQL
     """
     try:
         loop = asyncio.get_event_loop()
-        rows = await loop.run_in_executor(executor, _execute_query_sync, query)
+        rows = await loop.run_in_executor(executor, _execute_query_sync, query, database_details)
         return rows
     except Exception as e:
         logger.error(f"Ошибка при выполнении SQL-запроса: {query}, ошибка: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
-def _execute_query_sync(query: str) -> List[Dict[str, Any]]:
+def _execute_query_sync(query: str, database_details: dict) -> List[Dict[str, Any]]:
     """
     Синхронное выполнение запроса (запускается в отдельном потоке)
     """
-    conn = vertica_python.connect(**DB_CONFIG_VERTICA)
+    conn = vertica_python.connect(user=database_details['username'], password=database_details['password'], host=database_details['host'], port=database_details['port'], database=database_details['database_name'], connection_timeout=300, tlsmode='disable')
     try:
         cursor = conn.cursor()
         cursor.execute(query)
@@ -324,8 +310,8 @@ async def run_chat(model: str, messages: list[dict], think: bool, num_ctx: int):
 
 
 
-@app.post("/query-DjbdKsjfbkjs1", response_class=JSONResponse)
-async def queryPost(request: QueryRequest):
+@app.post("/ai/sql", response_class=JSONResponse)
+async def post_ai_sql(request: QueryRequest):
 
     start_total = time.perf_counter()
 
@@ -333,18 +319,29 @@ async def queryPost(request: QueryRequest):
 
     user_query = request.messages[-1].content
 
+    model_sql = "SELECT * FROM models WHERE name = $1"
+    model_params_sql = [request.model]
+    model_details_list = await execute_sql_analytics_ai(model_sql, model_params_sql)
+
+    if len(model_details_list) == 0 or model_details_list[0] is None:
+        raise HTTPException(status_code=500, detail=f"Модель ({request.model}) не поддерживается.")
+
+    model_details = model_details_list[0]
+
+
     result = {'extend': False,
               'query': user_query,
               'sql': '',
               'message': f'Невалидный запрос model: {request.model}, q: {user_query}',
               'data': [],
-              'model': models[request.model],
+              'model': model_details['model'],
               'tokens_count': 0,
               'total_duration_sec': 0
               # 'router': 'error'
               }
 
-    if request.messages is not None and models[request.model] is not None:
+
+    if request.messages is not None and len(model_details_list) > 0 and model_details_list[0] is not None:
 
         # ОПРЕДЕЛЕНИЕ РЕЖИМА РАБОТЫ
 
@@ -394,9 +391,9 @@ async def queryPost(request: QueryRequest):
                 logger.info(f"Это qwen3. Отключаем reasoning")
                 think = False
 
-            logger.info(f'----- Запрос в РОУТЕР. Модель: {models[request.model]}\n')
+            logger.info(f'----- Запрос в РОУТЕР. Модель: {model_details["model"]}\n')
 
-            response = await run_chat(models[request.model], messages, think, max_tokens)
+            response = await run_chat(model_details['model'], messages, think, max_tokens)
             logger.info(f"Ответ модели: {response}")
 
             response_after_think_splitted = re.split(r'</think>', response)
@@ -419,7 +416,7 @@ async def queryPost(request: QueryRequest):
                         'sql': '',
                         'message': router['response'],
                         'data': [],
-                        'model': models[request.model],
+                        'model': model_details['model'],
                         'tokens_count': 0,
                         'total_duration_sec': 0,
                         'mode': mode,
@@ -432,17 +429,12 @@ async def queryPost(request: QueryRequest):
 
         # ПОДГОТОВКА ДАННЫХ ДЛЯ ЗАПРОСА В МОДЕЛЬ ИЛИ В БД
 
-        if database == DB_ID_EGAIS:
-            instructions = instructions_egais
-            ddl = ddl_egais
-        elif database == DB_ID_REDMINE:
-            instructions = instructions_redmine
-            ddl = ddl_redmine
-        elif database == DB_ID_EGAIS_UTM:
-            instructions = instructions_egais_utm
-            ddl = ddl_egais_utm
-        else:
-            raise HTTPException(status_code=500, detail=f"Промт для базы данных ({database}) не поддерживается")
+        database_details_sql = "SELECT * FROM databases WHERE internal_name = $1"
+        database_details_params_sql = [database]
+        database_details_list = await execute_sql_analytics_ai(database_details_sql, database_details_params_sql)
+        database_details = database_details_list[0]
+        instructions = database_details['instructions']
+        ddl = database_details['ddl_schema']
 
         filtered_messages = []
         clarifications_temp = []
@@ -503,9 +495,9 @@ async def queryPost(request: QueryRequest):
 
 
         if not request.extend:
-            logger.info(f'----- Генерация SQL. Модель: {models[request.model]}\n')
+            logger.info(f'----- Генерация SQL. Модель: {model_details["model"]}\n')
 
-            response = await run_chat(models[request.model], messages, think, max_tokens)
+            response = await run_chat(model_details['model'], messages, think, max_tokens)
             # logger.info(f"Ответ модели: {response}")
 
             response_after_think_splitted = re.split(r'</think>', response)
@@ -529,7 +521,7 @@ async def queryPost(request: QueryRequest):
                           'sql': sqls[0],
                           'message': response_after_think,
                           'data': [],
-                          'model': models[request.model],
+                          'model': model_details['model'],
                           'tokens_count': tokens_count,
                           'total_duration_sec': round(time.perf_counter() - start_total, 2),
                           'mode': mode,
@@ -543,7 +535,7 @@ async def queryPost(request: QueryRequest):
                           'sql': '',
                           'message': response_after_think,
                           'data': [],
-                          'model': models[request.model],
+                          'model': model_details['model'],
                           'tokens_count': tokens_count,
                           'total_duration_sec': round(time.perf_counter() - start_total, 2),
                           'mode': mode,
@@ -556,7 +548,7 @@ async def queryPost(request: QueryRequest):
             rsp = request.messages[-1].content
             while True:
                 try:
-                    logger.info(f'----- Запрос в БД. Попытка номер: {try_idx} Модель: {models[request.model]}\n')
+                    logger.info(f'----- Запрос в БД. Попытка номер: {try_idx} Модель: {model_details["model"]}\n')
 
                     response_after_think_splitted = re.split(r'</think>', rsp)
                     response_after_think = response_after_think_splitted[-1].strip()
@@ -569,14 +561,15 @@ async def queryPost(request: QueryRequest):
                         logger.info(f"Готовый SQL для запроса в БД:\n{sql}")
 
                         result_sql = None
-                        if database == DB_ID_EGAIS:
-                            result_sql = await execute_sql_pg(sql)
-                        elif database == DB_ID_REDMINE:
-                            result_sql = await execute_sql_mysql(sql)
-                        elif database == DB_ID_EGAIS_UTM:
-                            result_sql = await execute_sql_vertica(sql)
+                        database_type = database_details['database_type']
+                        if database_type == DB_TYPE_POSTGRES:
+                            result_sql = await execute_sql_pg(sql, database_details)
+                        elif database_type == DB_TYPE_MYSQL:
+                            result_sql = await execute_sql_mysql(sql, database_details)
+                        elif database_type == DB_TYPE_VERTICA:
+                            result_sql = await execute_sql_vertica(sql, database_details)
                         else:
-                            raise HTTPException(status_code=500, detail=f"База данных ({database}) не поддерживается")
+                            raise HTTPException(status_code=500, detail=f"База данных ({database_type}) не поддерживается")
 
                         logger.info(f"Результат запроса в БД count: {len(result_sql)}")
                         # json_string_pretty = json.dumps(result_sql, indent=2, cls=CustomJSONEncoder, ensure_ascii=False)
@@ -587,7 +580,7 @@ async def queryPost(request: QueryRequest):
                                   'sql': sql,
                                   'message': rsp_to_chat,
                                   'data': result_sql,
-                                  'model': models[request.model],
+                                  'model': model_details['model'],
                                   'tokens_count': tokens_count,
                                   'total_duration_sec': round(time.perf_counter() - start_total, 2),
                                   'mode': mode,
@@ -602,7 +595,7 @@ async def queryPost(request: QueryRequest):
                                   'sql': '',
                                   'message': rsp_to_chat + '\n\n' + 'Не удалось сформировать SQL',
                                   'data': [],
-                                  'model': models[request.model],
+                                  'model': model_details['model'],
                                   'tokens_count': tokens_count,
                                   'total_duration_sec': round(time.perf_counter() - start_total, 2),
                                   'mode': mode,
@@ -620,7 +613,7 @@ async def queryPost(request: QueryRequest):
                                   'sql': sql,
                                   'message': rsp_to_chat,
                                   'data': [],
-                                  'model': models[request.model],
+                                  'model': model_details['model'],
                                   'tokens_count': tokens_count,
                                   'total_duration_sec': round(time.perf_counter() - start_total, 2),
                                   'mode': mode,
@@ -633,12 +626,12 @@ async def queryPost(request: QueryRequest):
 
                     try_idx += 1
 
-                    logger.info(f'----- Генерация SQL. Попытка номер: {try_idx} Модель: {models[request.model]}\n')
+                    logger.info(f'----- Генерация SQL. Попытка номер: {try_idx} Модель: {model_details["model"]}\n')
 
                     # Подсчет токенов примерный, поэтому вычитаем 1000 токенов из max_tokens, на всякий случай
                     messages, tokens_count = trim_messages_to_token_limit(messages, request.model, max_tokens=max_tokens-1000)
 
-                    error_fix_response = await run_chat(models[request.model], messages, think, max_tokens)
+                    error_fix_response = await run_chat(model_details['model'], messages, think, max_tokens)
                     error_fix_response_after_think_splitted = re.split(r'</think>', error_fix_response)
                     error_fix_response_after_think = error_fix_response_after_think_splitted[-1].strip()
 
@@ -655,160 +648,166 @@ async def queryPost(request: QueryRequest):
 
 
 
-@app.get("/query-DjbdKsjfbkjs1", response_class=JSONResponse)
-async def queryGet(q: str | None = None, model: str | None = None):
+def to_camel_case(s: str) -> str:
+    """snake_case → camelCase"""
+    return re.sub(r'_([a-z])', lambda m: m.group(1).upper(), s)
 
-    start_total = time.perf_counter()
-
-    logger.info(f"Запрос /query model: {model}, real: {models[model]}, q: {q}")
-
-    result = {'query': q,
-              'sql': '',
-              'message': f'Невалидный запрос model: {model}, q: {q}',
-              'data': [],
-              'model': models[model],
-              'total_duration_sec': round(time.perf_counter() - start_total, 2)
-              }
-
-    if q is not None and models[model] is not None:
-
-        messages = [
-            {"role": "user", "content": alpaca_prompt.format(instructions, ddl, q)},
-        ]
-
-
-        ### GENERATE SQL
-
-        try_idx = 1
-        while True:
-            try:
-                logger.info(f'----- Генерация SQL. Попытка номер: {try_idx} Модель: {models[model]}\n')
-
-                think = OLLAMA_THINK
-                if model == 'qwen3':
-                    logger.info(f"Отключаем reasoning")
-                    think = False
-
-                stream_sql = chat(stream=True,
-                                  model=models[model],
-                                  messages=messages,
-                                  think=think,
-                                  options={
-                                      'num_ctx': NUM_CTX,
-                                      'temperature': 0.1,
-                                      'top_p': 0.95
-                                  }
-                                  )
-
-                response = ''
-
-                for chunk in stream_sql:
-                    print(chunk['message']['content'], end='', flush=True)
-                    response += chunk['message']['content']
-
-
-                # logger.info(f"Ответ нейронки SQL: {response}")
-
-                response_after_think_splitted = re.split(r'</think>', response)
-                response_after_think = response_after_think_splitted[-1].strip()
-
-                # sql = re.search('```sql(.*)```', response, re.S).group(1).strip()
-                sqls = re.findall('```sql(.+?)```', response_after_think, re.DOTALL)
-                if len(sqls) != 1:
-                    logger.info("Не удалось найти один ```sql(.+?)```")
-                    if try_idx >= SQL_MAX_TRY:
-                        raise HTTPException(status_code=500, detail="Не удалось сформировать SQL запрос")
-                    # messages.append({"role": "user", "content": request + "\nПокажи только один SQL запрос в формате Markdown SQL"})
-                    try_idx += 1
-                    continue
-
-                messages.append({"role": "assistant", "content": response})
-
-                sql = sqls[0].strip()
-
-                logger.info(f"Готовый SQL для запроса в БД:\n{sql}")
-
-                result_sql = None
-                if DB_ID == DB_ID_EGAIS:
-                    result_sql = await execute_sql_pg(sql)
-                else:
-                    result_sql = await execute_sql_mysql(sql)
-
-                json_string_pretty = json.dumps(result_sql, indent=2, cls=CustomJSONEncoder, ensure_ascii=False)
-
-                logger.info(f"Результат запроса в БД:\n{json_string_pretty}")
-
-                result = {'query': q,
-                          'sql': sql,
-                          'message': response,
-                          'data': result_sql,
-                          'model': models[model],
-                          'total_duration_sec': round(time.perf_counter() - start_total, 2)
-                          }
-                break
-            except Exception as e:
-                logger.error(f"Ошибка при получении данных: {str(e)}")
-                if try_idx >= SQL_MAX_TRY:
-                    raise HTTPException(status_code=500, detail=str(e))
-                messages.append({"role": "user", "content": "Можешь исправить ошибку: " + str(e)})
-                try_idx += 1
-
-    return result
+def snake_to_camel_dict(data):
+    """
+    Рекурсивно конвертирует ключи dict/списков из snake_case в camelCase.
+    Сохраняет типы и структуру данных.
+    """
+    if isinstance(data, list):
+        return [snake_to_camel_dict(item) for item in data]
+    elif isinstance(data, dict):
+        return {
+            to_camel_case(k): snake_to_camel_dict(v)
+            for k, v in data.items()
+        }
+    else:
+        return data
 
 
 
 
+@app.get("/settings/models", response_class=JSONResponse)
+async def get_settings_models():
+    sql = 'SELECT name, display_name, description FROM models ORDER BY display_order'
+    models = await execute_sql_analytics_ai(sql)
+    return {'models': snake_to_camel_dict(models)}
 
-@app.get("/test")
-async def queryTest(q: str):
 
-    logger.info(f"Запрос /test q: {q}")
+@app.get("/settings/work-modes", response_class=JSONResponse)
+async def get_settings_work_modes():
+    sql = 'SELECT internal_name, display_name, enabled FROM databases ORDER BY display_order'
+    work_modes = await execute_sql_analytics_ai(sql)
+    # work_modes.append({"internalName": "auto", "displayName": "Автоматически", "enabled": true})
+    return snake_to_camel_dict(work_modes)
 
-    messages = [
-        {"role": "user", "content": alpaca_prompt.format(instructions, ddl, q)},
+
+@app.get("/settings/databases", response_class=JSONResponse)
+async def get_databases():
+    sql = 'SELECT id, database_type, display_name, internal_name, host, port FROM databases ORDER BY display_order'
+    databases = await execute_sql_analytics_ai(sql)
+    return snake_to_camel_dict(databases)
+
+@app.get("/settings/databases/{id}", response_class=JSONResponse)
+async def get_database_by_id(id: int):
+    sql = f"SELECT * FROM databases WHERE id = $1"
+    params = [id]
+    database = await execute_sql_analytics_ai(sql, params)
+
+    if not database or len(database) == 0:
+        raise HTTPException(status_code=404, detail="Database not found")
+
+    return snake_to_camel_dict(database[0])
+
+
+@app.post("/settings/databases", response_class=JSONResponse)
+async def create_databases(db: Database):
+    sql = """
+          INSERT INTO databases (
+              database_type,
+              display_name,
+              internal_name,
+              host,
+              port,
+              database_name,
+              username,
+              password,
+              instructions,
+              ddl_schema,
+              ddl_schema_ai,
+              description
+          )
+          VALUES (
+                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+                 )
+          RETURNING *; \
+          """
+
+    params = [
+        db.databaseType,
+        db.displayName,
+        db.internalName,
+        db.host,
+        db.port,
+        db.databaseName,
+        db.username,
+        db.password,
+        db.instructions,
+        db.ddlSchema,
+        db.ddlSchemaAi,
+        db.description,
     ]
 
-    stream_sql = chat(stream=True,
-                      model='qwen3:32b',
-                      messages=messages,
-                      options={
-                          'num_ctx': NUM_CTX,
-                          'temperature': 0.1,
-                          'top_p': 0.95
-                      }
-                      )
+    inserted = await execute_sql_analytics_ai(sql, params)
 
-    response = ''
-
-    for chunk in stream_sql:
-        print(chunk['message']['content'], end='', flush=True)
-        response += chunk['message']['content']
+    return snake_to_camel_dict(inserted[0])
 
 
-    logger.info(f"Ответ нейронки SQL: {response}")
 
-    response_after_think_splitted = re.split(r'</think>', response)
-    response_after_think = response_after_think_splitted[-1].strip()
+@app.put("/settings/databases/{id}", response_class=JSONResponse)
+async def update_databases(id: int, db: Database):
 
-    sqls = re.findall('```sql(.+?)```', response_after_think, re.DOTALL)
+    sql = """
+          UPDATE databases
+          SET database_type = $1,
+              display_name = $2,
+              internal_name = $3,
+              host = $4,
+              port = $5,
+              database_name = $6,
+              username = $7,
+              password = $8,
+              instructions = $9,
+              ddl_schema = $10,
+              ddl_schema_ai = $11,
+              enabled = $12,
+              description = $13
+          WHERE id = $14
+          RETURNING *; \
+          """
 
-    if len(sqls) == 1 and 'select' in sqls[0].lower() and 'from' in sqls[0].lower():
-        sql = sqls[0].strip()
-        logger.info(f"Готовый SQL для запроса в БД:\n{sql}")
-        result_sql = None
-        if DB_ID == DB_ID_EGAIS:
-            result_sql = await execute_sql_pg(sql)
-        else:
-            result_sql = await execute_sql_mysql(sql)
-        logger.info(f"result_sql:\n{result_sql}")
+    params = [
+        db.databaseType,
+        db.displayName,
+        db.internalName,
+        db.host,
+        db.port,
+        db.databaseName,
+        db.username,
+        db.password,
+        db.instructions,
+        db.ddlSchema,
+        db.ddlSchemaAi,
+        db.enabled,
+        db.description,
+        id
+    ]
 
-    return response
+    updated = await execute_sql_analytics_ai(sql, params)
+
+    if not updated or len(updated) == 0:
+        raise HTTPException(status_code=404, detail="Database not found")
+
+    return snake_to_camel_dict(updated[0])
+
+
+@app.delete("/settings/databases/{id}")
+async def delete_databases(id: int):
+    sql = "DELETE FROM databases WHERE id = $1"
+    params = [id]
+    await execute_sql_analytics_ai(sql, params)
+
+
+
 
 
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello, Den!"}
+    return {"message": "Analytics AI"}
 
 
 
