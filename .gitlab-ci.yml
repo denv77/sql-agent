@@ -1,0 +1,67 @@
+stages:
+  - docker_build
+  - docker_push
+  - deploy
+
+variables:
+  DOCKER_IMAGE_NAME: "$CI_REGISTRY_NAME/$CI_PROJECT_NAME:latest"
+
+docker_build_job:
+  stage: docker_build
+  tags:
+    - shell
+  dependencies:
+    - build_docker
+  script:
+    # Собираем Docker-образ с использованием Dockerfile из проекта
+    - docker build --network host -t $DOCKER_IMAGE_NAME .
+
+docker_push_job:
+  stage: docker_push
+  tags:
+    - shell
+  dependencies:
+    - docker_build_job
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - docker push $DOCKER_IMAGE_NAME
+
+deploy_job:
+  stage: deploy
+  tags:
+    - shell
+  script:
+    - echo "DOCKER_IMAGE_NAME $DOCKER_IMAGE_NAME"
+    - echo "DOCKER_IMAGE_NAME=$DOCKER_IMAGE_NAME" >> .env
+    - echo "DOCKER_CONTAINER_NAME $CI_PROJECT_NAME"
+    - echo "DOCKER_CONTAINER_NAME=$CI_PROJECT_NAME" >> .env
+    - echo "DB_CONFIG_PG_ANALYTICS_AI=$DB_CONFIG_PG_ANALYTICS_AI" >> .env
+    # Останавливаем и удаляем существующий контейнер, если он есть
+    - docker-compose -p "$CI_PROJECT_NAME" down
+    # Разворачиваем контейнеры с помощью docker-compose
+    - echo "Starting deploy with docker-compose"
+    - docker-compose -p "$CI_PROJECT_NAME" up -d
+  only:
+    - main
+    - develop
+
+deploy_job_cuda2:
+  stage: deploy
+  tags:
+    - shell-cuda2
+  script:
+    - echo "DOCKER_IMAGE_NAME $DOCKER_IMAGE_NAME"
+    - echo "DOCKER_IMAGE_NAME=$DOCKER_IMAGE_NAME" >> .env
+    - echo "DOCKER_CONTAINER_NAME $CI_PROJECT_NAME"
+    - echo "DOCKER_CONTAINER_NAME=$CI_PROJECT_NAME" >> .env
+    - echo "DB_CONFIG_PG_ANALYTICS_AI=$DB_CONFIG_PG_ANALYTICS_AI" >> .env
+    # Останавливаем и удаляем существующий контейнер, если он есть
+    - docker-compose -p "$CI_PROJECT_NAME" down
+    # Разворачиваем контейнеры с помощью docker-compose
+    - echo "Starting deploy with docker-compose cuda2"
+    # На сервере docker-compose v1, поэтому --pull always не работает и нужно делать pull.
+    # Потом нужно будет latest заменить на версию или хэш и проблема пропадет сама.
+    - docker pull $DOCKER_IMAGE_NAME
+    - docker-compose -f docker-compose.cuda2.yml -p "$CI_PROJECT_NAME" up -d
+  only:
+    - main

@@ -2,8 +2,8 @@ version: '3.8'
 
 services:
   sql-agent:
-    build: .
-    container_name: sql-agent
+    image: ${DOCKER_IMAGE_NAME}
+    container_name: ${DOCKER_CONTAINER_NAME}
     network_mode: host
     environment:
       - DB_CONFIG_PG_ANALYTICS_AI=${DB_CONFIG_PG_ANALYTICS_AI}
